@@ -1,0 +1,7 @@
+![one](pres/01_use_cases.png)
+![two](pres/02_services_logical.png)
+![three](pres/03_services_physical.png)
+![four](pres/04_start_saga.png)
+![five](pres/05_finish_saga.png)
+![six](pres/06_other_communications.png)
+![seven](pres/07_technologies.png)
