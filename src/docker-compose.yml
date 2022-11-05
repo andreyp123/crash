@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+
+  user-svc:
+    image: andreyp123/crash-user-svc:0.4
+    container_name: user-svc
+    build:
+      context: ./
+      dockerfile: UserSvc.Api/Dockerfile
+      args:
+        VERSION: 0.4.0
+    ports:
+      - 8000:8000
+    environment:
+      - UserDal__ConnectionString=server=postgres;port=5432;database=CrashDb;username=sa;password=sa;
+      - UserDal__AutoMigrate=true
+      - EventProducer__BootstrapServers=kafka:9092
+      - Tracing__AgentHost=jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  billing-svc:
+    image: andreyp123/crash-billing-svc:0.4
+    container_name: billing-svc
+    build:
+      context: ./
+      dockerfile: BillingSvc.Api/Dockerfile
+      args:
+        VERSION: 0.4.0
+    ports:
+      - 8002:8002
+    environment:
+      - AccountDal__ConnectionString=server=postgres;port=5432;database=CrashDb;username=sa;password=sa;
+      - AccountDal__AutoMigrate=true
+      - EventProducer__BootstrapServers=kafka:9092
+      - EventConsumer__BootstrapServers=kafka:9092
+      - Tracing__AgentHost=jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  rent-svc:
+    image: andreyp123/crash-rent-svc:0.4
+    container_name: rent-svc
+    build:
+      context: ./
+      dockerfile: RentSvc.Api/Dockerfile
+      args:
+        VERSION: 0.4.0
+    ports:
+      - 8004:8004
+    environment:
+      - RentDal__ConnectionString=server=postgres;port=5432;database=CrashDb;username=sa;password=sa;
+      - RentDal__AutoMigrate=true
+      - EventProducer__BootstrapServers=kafka:9092
+      - EventConsumer__BootstrapServers=kafka:9092
+      - CacheManager__RedisConnectionString=redis:6379
+      - Tracing__AgentHost=jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  notification-svc:
+    image: andreyp123/crash-notification-svc:0.4
+    container_name: notification-svc
+    build:
+      context: ./
+      dockerfile: NotificationSvc.Api/Dockerfile
+      args:
+        VERSION: 0.4.0
+    ports:
+      - 8006:8006
+    environment:
+      - NotificationDal__ConnectionString=server=postgres;port=5432;database=CrashDb;username=sa;password=sa;
+      - NotificationDal__AutoMigrate=true
+      - EventProducer__BootstrapServers=kafka:9092
+      - EventConsumer__BootstrapServers=kafka:9092
+      - EmailSender__Username=
+      - EmailSender__Password=
+      - EmailSender__From=
+      - Tracing__AgentHost=jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  car-svc:
+    image: andreyp123/crash-car-svc:0.4
+    container_name: car-svc
+    build:
+      context: ./
+      dockerfile: CarSvc.Api/Dockerfile
+      args:
+        VERSION: 0.4.0
+    ports:
+      - 8008:8008
+    environment:
+      - CarDal__ConnectionString=server=postgres;port=5432;database=CrashDb;username=sa;password=sa;
+      - CarDal__AutoMigrate=true
+      - EventProducer__BootstrapServers=kafka:9092
+      - EventConsumer__BootstrapServers=kafka:9092
+      - Tracing__AgentHost=jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  postgres:
+    image: postgres:14.0-alpine
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_DB: CrashDb
+      POSTGRES_USER: sa
+      POSTGRES_PASSWORD: sa
+    volumes:
+      - ./run/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d CrashDb -U sa"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+  
+  zookeeper:
+    image: docker.io/bitnami/zookeeper:3.7
+    ports:
+      - 22181:2181
+    volumes:
+      - ./run/zookeeper_data:/bitnami"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: docker.io/bitnami/kafka:3
+    ports:
+      - 9094:9094
+    volumes:
+      - ./run/kafka_data:/bitnami"
+    environment:
+      # https://github.com/bitnami/bitnami-docker-kafka#configuration
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=INTERNAL://kafka:9092,OUTSIDE://kafka:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://kafka:9092,OUTSIDE://localhost:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - 8080:8080
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    depends_on:
+      - kafka
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.25.0
+    ports:
+      - 16686:16686
+      - 6831:6831/udp
+      - 14269:14269
+
+  redis:
+    image: redis:6.0.2
+    ports:
+      - 6379:6379
+    command:
+      - --protected-mode no
+
+  redisinsight:
+    image: redislabs/redisinsight
+    ports:
+      - 8001:8001
+    depends_on:
+      - redis
+
+  redisinsight-init:
+    image: curlimages/curl
+    command: [ "sh","-c","curl --retry 5 --retry-connrefused -X POST redisinsight:8001/api/instance/ -H \"Content-Type: application/json\" --data '{\"name\":\"redis\",\"connectionType\":\"STANDALONE\",\"host\": \"redis\",\"port\": 6379}' " ]
+    depends_on:
+      - redisinsight
